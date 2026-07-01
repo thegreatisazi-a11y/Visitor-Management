@@ -20,6 +20,8 @@ const auditLogSchema = new mongoose.Schema(
         'qr_updated',
         'settings_updated',
         'login',
+        'autofill_used',
+        'printed',
       ],
       required: true,
     },

@@ -15,7 +15,6 @@ import VisitorEntries from './pages/admin/VisitorEntries';
 import CurrentlyInside from './pages/admin/CurrentlyInside';
 import OutSessions from './pages/admin/OutSessions';
 import QrManagement from './pages/admin/QrManagement';
-import Reports from './pages/admin/Reports';
 import AuditTrail from './pages/admin/AuditTrail';
 import AdminUsers from './pages/admin/AdminUsers';
 import Settings from './pages/admin/Settings';
@@ -47,11 +46,11 @@ export default function App() {
         <Route path="/admin/currently-inside" element={<CurrentlyInside />} />
         <Route path="/admin/out-sessions" element={<OutSessions />} />
         <Route path="/admin/qr-management" element={<QrManagement />} />
-        <Route path="/admin/reports" element={<Reports />} />
         <Route path="/admin/audit-trail" element={<AuditTrail />} />
         <Route path="/admin/admin-users" element={<AdminUsers />} />
         <Route path="/admin/settings" element={<Settings />} />
         <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+        <Route path="/admin/reports" element={<Navigate to="/admin/visitor-entries" replace />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/visitor" replace />} />

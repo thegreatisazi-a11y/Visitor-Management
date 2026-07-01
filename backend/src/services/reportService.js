@@ -47,7 +47,11 @@ function buildDateRangeForReportType(reportType, dateFrom, dateTo) {
     case 'yearly':
       return { $gte: startOfYear(now), $lte: endOfDay(now) };
     case 'custom':
-      if (!dateFrom || !dateTo) throw new AppError('dateFrom and dateTo are required for a custom report', 400);
+      // Visitor Entries exports reuse this report type for "export whatever is
+      // currently filtered" - dates are optional there, so only constrain by
+      // visitDate when both bounds are actually supplied.
+      if (!dateFrom && !dateTo) return undefined;
+      if (!dateFrom || !dateTo) throw new AppError('dateFrom and dateTo are required together for a custom report', 400);
       return { $gte: startOfDay(dateFrom), $lte: endOfDay(dateTo) };
     default:
       return undefined;

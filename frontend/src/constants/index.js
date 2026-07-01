@@ -42,6 +42,7 @@ export const FILTERABLE_FIELDS = [
   { field: 'personToMeet', label: 'Person to Meet', type: 'text' },
   { field: 'inTime', label: 'In Time', type: 'datetime' },
   { field: 'outTime', label: 'Out Time', type: 'datetime' },
+  { field: 'visitDurationMinutes', label: 'Duration (min)', type: 'number' },
   {
     field: 'status',
     label: 'Status',

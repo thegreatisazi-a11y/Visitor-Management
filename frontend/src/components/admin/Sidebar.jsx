@@ -6,20 +6,20 @@ import {
   FiUserCheck,
   FiLogOut,
   FiCode,
-  FiFileText,
   FiShield,
   FiUserPlus,
   FiSettings,
   FiX,
 } from 'react-icons/fi';
 
+// Reports was merged into Visitor Entries (search/filter/export/print all live there
+// now), so there is no standalone Reports nav item anymore.
 const NAV_ITEMS = [
   { to: '/admin/dashboard', label: 'Admin Dashboard', icon: FiGrid },
   { to: '/admin/visitor-entries', label: 'Visitor Entries', icon: FiUsers },
   { to: '/admin/currently-inside', label: 'Currently Inside', icon: FiUserCheck },
   { to: '/admin/out-sessions', label: 'OUT Sessions', icon: FiLogOut },
   { to: '/admin/qr-management', label: 'QR Management', icon: FiCode },
-  { to: '/admin/reports', label: 'Reports', icon: FiFileText },
   { to: '/admin/audit-trail', label: 'Audit Trail', icon: FiShield },
   { to: '/admin/admin-users', label: 'Admin Users', icon: FiUserPlus },
   { to: '/admin/settings', label: 'Settings', icon: FiSettings },

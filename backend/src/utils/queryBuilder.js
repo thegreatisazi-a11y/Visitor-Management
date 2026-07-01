@@ -30,6 +30,13 @@ function buildCondition(type, operator, value, value2) {
     return dateRangeForOperator(operator);
   }
 
+  // Excel-style "select values" filter: works the same way for any field type,
+  // matching exactly against the distinct values the column filter menu offered.
+  if (operator === 'in_list') {
+    const list = Array.isArray(value) ? value : String(value).split(',').map((v) => v.trim());
+    return list.length ? { $in: list } : undefined;
+  }
+
   switch (type) {
     case 'text':
       switch (operator) {
@@ -67,8 +74,6 @@ function buildCondition(type, operator, value, value2) {
           return value;
         case 'not_equals':
           return { $ne: value };
-        case 'in_list':
-          return { $in: Array.isArray(value) ? value : String(value).split(',').map((v) => v.trim()) };
         default:
           return undefined;
       }

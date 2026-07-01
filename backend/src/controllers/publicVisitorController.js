@@ -3,6 +3,8 @@ const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
 const visitorService = require('../services/visitorService');
 const qrService = require('../services/qrService');
+const { writeAuditLog } = require('../services/auditService');
+const { mobileSchema } = require('../validators/publicVisitorValidators');
 const { formatDateDDMMYYYY, formatTimeHHMM } = require('../utils/dateHelpers');
 
 function serializeEntry(entry) {
@@ -79,4 +81,42 @@ const checkout = catchAsync(async (req, res, next) => {
   sendSuccess(res, { message: 'Check-Out Successful', data: { found: true, entry: serializeEntry(result.entry) } });
 });
 
-module.exports = { checkMobile, checkin, getCheckoutDetails, checkout };
+// Autofill support: looks up the visitor's own most recent past visit by mobile number
+// so the IN form can pre-populate name/company/email/etc. Does not create or expose
+// any separate visitor profile/master record - it only reads the latest visitor_entries row.
+const getPreviousByMobile = catchAsync(async (req, res, next) => {
+  const parsed = mobileSchema.safeParse(req.params.mobileNo);
+  if (!parsed.success) {
+    return next(new AppError('Mobile number must be exactly 10 digits', 422));
+  }
+  const mobileNo = parsed.data;
+
+  const entry = await visitorService.findLatestByMobile(mobileNo);
+  if (!entry) {
+    return sendSuccess(res, { message: 'No previous visitor found', data: null });
+  }
+
+  await writeAuditLog({
+    visitorEntryId: entry._id,
+    visitorId: entry.visitorId,
+    moduleName: 'visitor_entries',
+    action: 'autofill_used',
+    newValue: { mobileNo, sourceEntryId: entry._id },
+    ipAddress: req.clientIp,
+    deviceInfo: req.deviceInfo,
+  });
+
+  sendSuccess(res, {
+    message: 'Previous visitor details found',
+    data: {
+      visitorName: entry.visitorName,
+      companyName: entry.companyName,
+      address: entry.address,
+      emailId: entry.emailId,
+      purposeOfVisit: entry.purposeOfVisit,
+      personToMeet: entry.personToMeet,
+    },
+  });
+});
+
+module.exports = { checkMobile, checkin, getCheckoutDetails, checkout, getPreviousByMobile };

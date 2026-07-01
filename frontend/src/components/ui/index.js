@@ -12,3 +12,5 @@ export { default as Pagination } from './Pagination';
 export { default as Table } from './Table';
 export { default as StatCard } from './StatCard';
 export { default as FilterBar } from './FilterBar';
+export { default as ColumnFilterMenu } from './ColumnFilterMenu';
+export { default as ColumnRangeFilter } from './ColumnRangeFilter';

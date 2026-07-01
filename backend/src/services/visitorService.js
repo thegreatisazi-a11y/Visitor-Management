@@ -4,7 +4,7 @@ const AppError = require('../utils/AppError');
 const generateVisitorId = require('../utils/generateVisitorId');
 const { startOfDay, diffInMinutes } = require('../utils/dateHelpers');
 const { getPagination, buildMeta } = require('../utils/pagination');
-const { buildFilterQuery, buildGlobalSearchQuery, buildQuickFilterQuery } = require('../utils/queryBuilder');
+const { buildFilterQuery, buildGlobalSearchQuery, buildQuickFilterQuery, parseFilters } = require('../utils/queryBuilder');
 const { writeAuditLog } = require('./auditService');
 
 const ACTIVE_ENTRY_QUERY = { status: 'inside_premises', outTime: null };
@@ -19,6 +19,13 @@ async function checkMobile(mobileNo) {
     return { action: 'checkout', entry: activeEntry };
   }
   return { action: 'checkin', entry: null };
+}
+
+// Used to autofill the Visitor IN form from the visitor's own most recent visit.
+// Looks across all statuses (not just active ones) since even a completed/cancelled
+// past visit still tells us the visitor's name, company, email, etc.
+async function findLatestByMobile(mobileNo) {
+  return VisitorEntry.findOne({ mobileNo }).sort({ createdAt: -1 });
 }
 
 async function createCheckin(payload, meta = {}) {
@@ -124,6 +131,37 @@ function buildListQuery({ search, quickFilter, filters, dateFrom, dateTo }) {
   }
 
   return query;
+}
+
+// Columns the Excel-style header filter menu is allowed to request distinct values
+// for. Keeps the endpoint from being used to dump arbitrary schema fields.
+const DISTINCT_ALLOWED_FIELDS = [
+  'visitorId',
+  'visitorName',
+  'mobileNo',
+  'emailId',
+  'companyName',
+  'personToMeet',
+  'purposeOfVisit',
+  'status',
+  'checkoutMethod',
+];
+
+async function getDistinctValues(field, reqQuery) {
+  if (!DISTINCT_ALLOWED_FIELDS.includes(field)) {
+    throw new AppError('This field does not support value-list filtering', 400);
+  }
+
+  // Exclude the column's own filter so its option list reflects rows matching every
+  // OTHER currently active filter - the same behaviour Excel's column filter has.
+  const otherFilters = parseFilters(reqQuery.filters).filter((f) => f.field !== field);
+  const query = buildListQuery({ ...reqQuery, filters: otherFilters });
+
+  const values = await VisitorEntry.distinct(field, query);
+  return values
+    .filter((v) => v !== null && v !== undefined && v !== '')
+    .sort((a, b) => String(a).localeCompare(String(b)))
+    .slice(0, 500);
 }
 
 async function listEntries(reqQuery) {
@@ -270,10 +308,12 @@ async function listOutSessions(reqQuery) {
 module.exports = {
   ACTIVE_ENTRY_QUERY,
   findActiveEntryByMobile,
+  findLatestByMobile,
   checkMobile,
   createCheckin,
   completeCheckout,
   buildListQuery,
+  getDistinctValues,
   listEntries,
   listCurrentlyInside,
   getEntryById,

@@ -122,6 +122,7 @@ All routes are mounted under `/api`. Public visitor routes require no authentica
 ```
 Public
   POST   /api/public/visitor/check-mobile
+  GET    /api/public/visitor/previous/:mobileNo   (autofill lookup - see Changelog)
   POST   /api/public/visitor/checkin
   GET    /api/public/visitor/checkout/:visitorEntryId
   POST   /api/public/visitor/checkout
@@ -140,6 +141,7 @@ Admin — Dashboard
 
 Admin — Visitors
   GET    /api/admin/visitors
+  POST   /api/admin/visitors/print-log        (audit-only, fired before window.print())
   GET    /api/admin/visitors/:id
   PUT    /api/admin/visitors/:id
   POST   /api/admin/visitors/:id/cancel
@@ -155,7 +157,7 @@ Admin — QR
   POST   /api/admin/qr/:id/regenerate-token
   GET    /api/admin/qr/:id/download        (?download=true forces attachment, default inline)
 
-Admin — Reports
+Admin — Reports (backend kept as-is; the UI for this now lives inside Visitor Entries, see Changelog)
   GET    /api/admin/reports
   GET    /api/admin/reports/exports
   POST   /api/admin/reports/export
@@ -174,3 +176,55 @@ Every list endpoint supports pagination (`page`, `limit`), global text search (`
 - "Forgot password" has no email-sending infrastructure wired up (out of scope for this build) — in development it logs the generated temporary password to the server console; in any real deployment, plug in an email provider before relying on this flow.
 - Company logo / report header assets are stored as plain URL/path strings in `system_settings` — there is no file upload endpoint; point the setting at an already-hosted image URL.
 - `visitorIdNumberingFormat` in Settings is informational; the actual ID generator (`backend/src/utils/generateVisitorId.js`) always produces `PREFIX-YYYY-000000` using the configured prefix and an atomic yearly counter.
+
+## Changelog
+
+### Mobile-based autofill, Reports→Visitor Entries merge, table scroll fix, column filters
+
+**1. Mobile-number-based Visitor IN autofill**
+
+- New endpoint `GET /api/public/visitor/previous/:mobileNo` (`backend/src/controllers/publicVisitorController.js`, `backend/src/services/visitorService.js#findLatestByMobile`, routed in `backend/src/routes/publicVisitorRoutes.js`). Looks up the visitor's own most recent `visitor_entries` row by `mobileNo` (across any status, sorted by `createdAt` desc) and returns only the fillable fields: `visitorName`, `companyName`, `address`, `emailId`, `purposeOfVisit`, `personToMeet`. Returns `data: null` (not an error) when nothing is found. Validates the mobile number format server-side and writes an `autofill_used` audit log entry when a match is used.
+- No new collection was created — this deliberately reuses `visitor_entries` directly, consistent with the existing "no visitor master/profile table" rule. `mobileNo` was already indexed, so the lookup is fast as-is.
+- Frontend: `frontend/src/pages/public/CheckIn.jsx` calls this on mount (the mobile number is already known at that point in this app's flow — it's captured on the Welcome screen before the IN form ever renders) via `getPreviousByMobile` (`frontend/src/services/publicVisitorService.js`). Shows a small spinner while checking, and a dismissible "Previous visitor details found and autofilled" banner on a hit. Uses `react-hook-form`'s `setValue` guarded by `dirtyFields` so it never overwrites a field the visitor has already started editing. System-generated fields (Date, Visitor ID, In/Out Time, Status) and `remarks` are never touched by autofill.
+- Endpoint path note: the request specified `GET /api/visitors/by-mobile/:mobileNumber`, but this call originates from the *unauthenticated* public Check-In form, so it was placed under the existing public namespace (`/api/public/visitor/previous/:mobileNo`) instead of the JWT-protected `/api/admin/visitors` namespace — putting it there would have made it impossible for a walk-in visitor to use.
+
+**2. Reports module merged into Visitor Entries**
+
+- `frontend/src/pages/admin/Reports.jsx` was removed; its route and sidebar entry are gone (`frontend/src/App.jsx` now redirects `/admin/reports` → `/admin/visitor-entries`; `frontend/src/components/admin/Sidebar.jsx` no longer lists Reports).
+- All of its functionality now lives in `frontend/src/pages/admin/VisitorEntries.jsx`: Date From/To range, Excel/CSV/PDF export buttons, a "Print List" button, a live matching-record count, and a collapsible "Export History" panel.
+- The backend Reports API (`backend/src/routes/reportRoutes.js`, `reportController.js`, `reportService.js`) was **reused as-is**, not duplicated — Visitor Entries calls it with `reportType: 'custom'` plus whatever filters/search/date-range are currently active in the table. One backend change was needed to support this: `reportService.js`'s `custom` report type previously *required* `dateFrom`/`dateTo`; it now only applies a date constraint when both are actually provided, so "export exactly what's on screen" (filters only, no date range) works.
+- New `POST /api/admin/visitors/print-log` (`visitorController.js#logPrint`) writes a `printed` audit log entry; the frontend calls it right before `window.print()` for both the whole filtered list and a single entry's detail view.
+
+**3. Table horizontal scroll containment**
+
+- Root cause: `frontend/src/layouts/AdminLayout.jsx`'s flex column (Topbar + `<main>`) had no `min-width: 0`, so a wide table could inflate that flex item — and the whole page — instead of scrolling inside `Table.jsx`'s own `overflow-x-auto` wrapper (a classic flexbox min-width pitfall). Fixed by adding `min-w-0`/`max-w-full` to the layout's flex containers and to `VisitorEntries.jsx`'s wrapping elements. The sidebar and topbar no longer move; only the table body scrolls horizontally now.
+
+**4. Column header filters**
+
+- `frontend/src/components/ui/Table.jsx` gained an optional per-column `filter` config (`{ type: 'text' | 'select', value, onChange, options?, placeholder? }`) rendered as a second header row, reusable by any table in the app.
+- `VisitorEntries.jsx` wires this up for Visitor ID, Visitor Name, Mobile No., Email ID, Company Name, Person to Meet, Purpose of Visit (text, debounced 400ms) and Status / Checkout Method (dropdowns). These combine with the existing advanced `FilterBar` popover and global search into one query — page resets to 1 on any change, and a "Reset All Filters" button clears everything (search, quick filter, advanced filters, column filters, date range) at once. Export and Print both use this same combined filter set.
+- `Department`, `Visitor Type`, `ID Proof`, and `Vehicle Number` header filters from the request were intentionally not added — this schema has no such fields (the original spec for this app explicitly excludes a department master/module), so there's nothing to filter by. `Created By` was similarly skipped since visitor entries don't currently record a creator field beyond `cancelledBy`.
+
+**5. Permissions**
+
+- This application has no role/permission system at all today — every authenticated admin account has identical, full access (see `backend/src/models/AdminUser.js`: just `status: active|inactive|blocked`, no roles or permission flags). There was nothing named "View/Export/Print Reports" to migrate. If granular RBAC is wanted later, it would be a new feature, not a migration of existing permissions.
+
+**6. Audit log**
+
+- Two new `AuditLog` actions were added: `autofill_used` (fired by the new autofill endpoint) and `printed` (fired by the new print-log endpoint). All other requested audit events (entry created/updated/OUT completed/exported) were already covered by existing `in_submitted`, `edited`, `out_completed`, and `exported` actions.
+
+**Files touched:** `backend/src/services/visitorService.js`, `backend/src/controllers/publicVisitorController.js`, `backend/src/routes/publicVisitorRoutes.js`, `backend/src/controllers/visitorController.js`, `backend/src/routes/visitorRoutes.js`, `backend/src/services/reportService.js`, `backend/src/models/AuditLog.js`, `frontend/src/pages/public/CheckIn.jsx`, `frontend/src/services/publicVisitorService.js`, `frontend/src/services/visitorService.js`, `frontend/src/pages/admin/VisitorEntries.jsx`, `frontend/src/components/ui/Table.jsx`, `frontend/src/layouts/AdminLayout.jsx`, `frontend/src/components/admin/Sidebar.jsx`, `frontend/src/App.jsx`, `frontend/src/index.css`. Removed: `frontend/src/pages/admin/Reports.jsx`.
+
+**Verified:** full backend flow tested directly against a running instance — fresh mobile number returns no autofill data, a completed visit's details are correctly returned and autofilled on the next visit with the same mobile number (with an `autofill_used` audit entry), field-based filtering against `/api/admin/visitors` works, a real `.xlsx` export was generated from filters alone with no date range, and the `printed` audit action was confirmed. Frontend build and lint are both clean (0 errors).
+
+### Excel-style multi-select column filters
+
+The column header filters above were upgraded from single text/dropdown inputs to a true Excel-style experience: each column header has a small funnel icon that opens a checklist of that column's *actual distinct values* (not a free-text guess), and any number of values can be checked at once, per column, combined across columns.
+
+- `backend/src/utils/queryBuilder.js` — the `in_list` filter operator (exact match against a list of values) is now generic across all field types, not just `dropdown`, so it works for Visitor ID, Visitor Name, Mobile No., Email ID, Company Name, Person to Meet, and Purpose of Visit too.
+- New endpoint `GET /api/admin/visitors/distinct/:field` (`visitorService.js#getDistinctValues`, `visitorController.js`, routed in `visitorRoutes.js`) returns the sorted distinct values present for a whitelisted column. It's context-aware like Excel: it excludes the column's own filter but respects every other active filter/search/date-range/quick-filter, so the checklist only ever offers values that can actually still appear given what's already filtered.
+- `frontend/src/components/ui/ColumnFilterMenu.jsx` (new) is the funnel-icon popover: search-within-list, Select all / Clear, checkboxes, Apply/Cancel. `Table.jsx` now renders it inline in the header cell (not a separate filter row) whenever a column provides a `filter` config. `VisitorEntries.jsx`'s column filters are now arrays of selected values (`in_list`) instead of single text/dropdown values, wired to the new distinct-values endpoint via `getDistinctValues` (`frontend/src/services/visitorService.js`).
+
+**Date / In Time / Out Time / Duration header filters**
+
+A values-checklist doesn't work for columns where almost every row is unique (exact timestamps, minute-precision durations) - Excel itself switches to an operator+range filter for those. `frontend/src/components/ui/ColumnRangeFilter.jsx` (new) is that: a small "Before/After/Between" (date columns) or "Greater than/Less than/Between" (Duration) popover, reusing the exact same `{field, operator, value, value2}` shape and backend logic the advanced FilterBar already used. `Table.jsx`'s header filter now branches on `filter.kind === 'range'` to render this instead of the checklist. `visitDurationMinutes` was also missing from the backend's filterable-field type map (`backend/src/constants/filterableFields.js`) and the frontend's `FILTERABLE_FIELDS` (`frontend/src/constants/index.js`) - both were added as type `number` so Duration filtering works both here and in the advanced FilterBar.

@@ -11,3 +11,18 @@ body,
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
+
+@media print {
+  aside,
+  header,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  body {
+    background: white !important;
+  }
+}

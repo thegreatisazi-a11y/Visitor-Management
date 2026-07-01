@@ -10,6 +10,7 @@ const VISITOR_ENTRY_FIELD_TYPES = {
   personToMeet: 'text',
   inTime: 'datetime',
   outTime: 'datetime',
+  visitDurationMinutes: 'number',
   status: 'dropdown',
   checkoutMethod: 'dropdown',
   createdAt: 'datetime',

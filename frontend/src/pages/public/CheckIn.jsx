@@ -2,22 +2,28 @@ import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Button, Card, Input, TextArea } from '../../components/ui';
+import { FiCheckCircle } from 'react-icons/fi';
+import { Button, Card, Input, Spinner, TextArea } from '../../components/ui';
 import { emailRules, minLen, nameRules } from '../../utils/validators';
 import { formatDate, formatTime } from '../../utils/formatters';
-import { checkin, getPublicSettings } from '../../services/publicVisitorService';
+import { checkin, getPreviousByMobile, getPublicSettings } from '../../services/publicVisitorService';
 import { extractErrorMessage } from '../../services/apiClient';
+
+const AUTOFILL_FIELDS = ['visitorName', 'companyName', 'address', 'emailId', 'purposeOfVisit', 'personToMeet'];
 
 export default function CheckIn() {
   const location = useLocation();
   const navigate = useNavigate();
   const mobileNo = location.state?.mobileNo;
   const [policyText, setPolicyText] = useState('I agree to company visitor policy.');
+  const [autofillLoading, setAutofillLoading] = useState(true);
+  const [autofilled, setAutofilled] = useState(false);
 
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    setValue,
+    formState: { errors, isSubmitting, dirtyFields },
   } = useForm({ defaultValues: { mobileNo } });
 
   useEffect(() => {
@@ -29,6 +35,28 @@ export default function CheckIn() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!mobileNo) return;
+    getPreviousByMobile(mobileNo)
+      .then((response) => {
+        const previous = response.data.data;
+        if (!previous) return;
+
+        AUTOFILL_FIELDS.forEach((field) => {
+          // Never stomp on a value the visitor has already started typing.
+          if (!dirtyFields[field] && previous[field]) {
+            setValue(field, previous[field]);
+          }
+        });
+        setAutofilled(true);
+      })
+      .catch(() => {
+        // Silent - autofill is a convenience, not a required step.
+      })
+      .finally(() => setAutofillLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileNo]);
 
   if (!mobileNo) {
     return <Navigate to="/visitor" replace />;
@@ -57,6 +85,17 @@ export default function CheckIn() {
     <Card>
       <h1 className="text-lg font-semibold text-slate-900">Visitor Check-In</h1>
       <p className="mt-1 text-sm text-slate-500">Please fill in your details to check in.</p>
+
+      {autofillLoading && (
+        <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+          <Spinner size={14} /> Checking for previous visit details...
+        </div>
+      )}
+      {!autofillLoading && autofilled && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          <FiCheckCircle size={16} /> Previous visitor details found and autofilled. You can edit any field below.
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
         <Input label="Date" value={formatDate(new Date())} disabled readOnly />
