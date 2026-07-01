@@ -1,0 +1,39 @@
+const { z } = require('zod');
+
+const mobileSchema = z
+  .string()
+  .trim()
+  .regex(/^[0-9]{10}$/, 'Mobile number must be exactly 10 digits');
+
+const emailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.com$/, 'Enter a valid email address ending with .com');
+
+const checkMobileSchema = z.object({
+  mobileNo: mobileSchema,
+});
+
+const checkinSchema = z.object({
+  mobileNo: mobileSchema,
+  visitorName: z
+    .string()
+    .trim()
+    .min(2, 'Visitor name must be at least 2 characters')
+    .regex(/^[A-Za-z. ]+$/, 'Visitor name can only contain letters, spaces and dot'),
+  companyName: z.string().trim().min(2, 'Company name must be at least 2 characters'),
+  address: z.string().trim().min(5, 'Address must be at least 5 characters'),
+  emailId: emailSchema,
+  purposeOfVisit: z.string().trim().min(2, 'Purpose of visit must be at least 2 characters'),
+  personToMeet: z.string().trim().min(2, 'Person to meet must be at least 2 characters'),
+  remarks: z.string().trim().max(1000).optional().default(''),
+  policyAgreed: z.literal(true, { errorMap: () => ({ message: 'You must agree to the visitor policy' }) }),
+});
+
+const checkoutSchema = z.object({
+  mobileNo: mobileSchema.optional(),
+  visitorEntryId: z.string().trim().optional(),
+});
+
+module.exports = { checkMobileSchema, checkinSchema, checkoutSchema, mobileSchema, emailSchema };
