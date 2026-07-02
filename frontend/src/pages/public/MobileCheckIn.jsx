@@ -7,7 +7,9 @@ import { mobileRules } from '../../utils/validators';
 import { checkMobile, getPublicSettings } from '../../services/publicVisitorService';
 import { extractErrorMessage } from '../../services/apiClient';
 
-export default function Welcome() {
+// Fallback flow: the original mobile-number-first check-in, reached via the
+// "Use Mobile Number Instead" link on the registration-choice screen.
+export default function MobileCheckIn() {
   const navigate = useNavigate();
   const [settings, setSettings] = useState(null);
   const [loadingSettings, setLoadingSettings] = useState(true);
@@ -61,14 +63,10 @@ export default function Welcome() {
   return (
     <Card className="text-center">
       {settings?.companyLogo && (
-        <img
-          src={settings.companyLogo}
-          alt={companyName}
-          className="mx-auto mb-4 h-16 w-auto object-contain"
-        />
+        <img src={settings.companyLogo} alt={companyName} className="mx-auto mb-4 h-16 w-auto object-contain" />
       )}
       <h1 className="text-lg font-semibold text-slate-900">{companyName}</h1>
-      <p className="mt-1 text-sm text-slate-500">Welcome to {companyName}</p>
+      <p className="mt-1 text-sm text-slate-500">Enter your mobile number to continue.</p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="mt-6 text-left">
         <Input
@@ -81,15 +79,18 @@ export default function Welcome() {
           error={errors.mobileNo?.message}
           {...register('mobileNo', mobileRules)}
         />
-        <Button
-          type="submit"
-          size="lg"
-          loading={isSubmitting}
-          className="mt-6 w-full"
-        >
+        <Button type="submit" size="lg" loading={isSubmitting} className="mt-6 w-full">
           Continue
         </Button>
       </form>
+
+      <button
+        type="button"
+        onClick={() => navigate('/visitor')}
+        className="mt-4 text-sm font-medium text-slate-400 underline hover:text-slate-600"
+      >
+        Back
+      </button>
     </Card>
   );
 }

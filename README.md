@@ -47,6 +47,20 @@ Visitor Portal/
 
 - Node.js 18+
 - A running MongoDB instance (local `mongod` or a connection string to Atlas/hosted Mongo)
+- Python 3.10+ (for the face-recognition AI service in `ai-service/`)
+
+## Face recognition AI service (`ai-service/`)
+
+A separate stateless Python (FastAPI + InsightFace) microservice handles face detection, embedding extraction, and matching. **React never calls it directly** — the flow is always React → Node → Python → Node → MongoDB. See `ai-service/README.md` for full details. Quick start (Windows):
+
+```bash
+cd ai-service
+python -m venv venv
+venv\Scripts\python.exe -m pip install -r requirements.txt   # first run downloads the buffalo_l model (~300MB)
+venv\Scripts\python.exe -m uvicorn app.main:app --port 8001
+```
+
+The Node backend reaches it at `AI_SERVICE_BASE_URL` (default `http://localhost:8001`). If the service is down, face endpoints return a clean 502 and the rest of the portal keeps working. So three processes run in development: Python AI (8001), Node API (5001), Vite (5173).
 
 ## Setup
 
@@ -228,3 +242,21 @@ The column header filters above were upgraded from single text/dropdown inputs t
 **Date / In Time / Out Time / Duration header filters**
 
 A values-checklist doesn't work for columns where almost every row is unique (exact timestamps, minute-precision durations) - Excel itself switches to an operator+range filter for those. `frontend/src/components/ui/ColumnRangeFilter.jsx` (new) is that: a small "Before/After/Between" (date columns) or "Greater than/Less than/Between" (Duration) popover, reusing the exact same `{field, operator, value, value2}` shape and backend logic the advanced FilterBar already used. `Table.jsx`'s header filter now branches on `filter.kind === 'range'` to render this instead of the checklist. `visitDurationMinutes` was also missing from the backend's filterable-field type map (`backend/src/constants/filterableFields.js`) and the frontend's `FILTERABLE_FIELDS` (`frontend/src/constants/index.js`) - both were added as type `number` so Duration filtering works both here and in the advanced FilterBar.
+
+### Face-recognition visitor identification
+
+Returning visitors are now identified by **face** instead of mobile number. First-time visitors register with a mandatory live selfie + consent; a persistent `VisitorProfile` stores their face embedding; on later visits they scan their face, are matched against stored embeddings, and confirm check-in without typing anything. Mobile number remains a stored profile field and a fallback flow.
+
+**Architecture (strict layering):** React → Node/Express → **Python AI service (`ai-service/`, FastAPI + InsightFace `buffalo_l`)** → Node → MongoDB. The browser never talks to Python; only `backend/src/services/faceAiService.js` does. Face embeddings never leave the Node↔Python boundary — `VisitorProfile.faceEmbedding` is `select:false` and every controller uses an explicit whitelist serializer (verified: `hasEmbedding=false` in all API responses, including authenticated admin ones).
+
+**Public flow** (`frontend/src/pages/public/`): `/visitor` is now a `RegistrationChoice` screen ("Is this your first registration?" → First Time / Already Registered). `FirstTimeRegistration.jsx` = the IN form + a zero-dependency `CameraCapture.jsx` (live `getUserMedia`, no file upload) + a photo-consent checkbox → `POST /api/public/visitor/register-with-face`. `FaceRecognition.jsx` scans a face → `POST /recognize-face` → shows the matched profile card + Confirm IN Entry, with distinct messages for no-face / multiple-faces / low-confidence (Try Again, First Time Registration, and a staff-only Manual Search shown only to a logged-in admin), and blocks duplicate active check-ins ("This visitor is already checked in."). The original mobile flow is preserved verbatim at `/visitor/mobile` ("Use Mobile Number Instead"); checkout is unchanged and works for face-checked-in visitors too (mobile is still copied onto every entry).
+
+**Data model:** new `VisitorProfile` collection (`backend/src/models/VisitorProfile.js`); `VisitorEntry` gains `visitorProfileId`, `entryMethod` (`manual`|`first_registration`|`face_recognition`), `confidenceScore`, and a `face_auto` `checkoutMethod`. Existing flat per-visit fields are kept (no history migration risk). Run `node backend/scripts/backfillEntryMethod.js` once to tag pre-existing rows as `manual`. Threshold is `FACE_RECOGNITION_THRESHOLD` (default 0.85), applied in Node, not Python.
+
+**Admin:** Visitor Entries gains Entry Method (Excel-style filter), Confidence (range filter), and Photo (JWT-authed thumbnail) columns via the existing generic filter infra; a new **Visitor Profiles** page (`/admin/visitor-profiles`) lists registered faces with a Face Registered filter, per-row **View Photo / Edit Details / Re-register Face** actions, and photo access only through the JWT-protected `GET /api/admin/visitor-profiles/:id/photo` (401 without a token). Admins can edit a visitor's stored contact details (`PUT /api/admin/visitor-profiles/:id` → `profile_updated` audit) and re-capture/replace a registered face — the one exception to "captured once" — via `POST /api/admin/visitor-profiles/:id/reregister-face` (re-runs the AI pipeline, overwrites embedding+photo → `face_manual_override` audit). Audit log gains `face_registered`, `face_checkin_confirmed`, `face_recognition_failed`, `face_manual_override`, `profile_updated` — all now wired to real call sites.
+
+**Real-time:** a minimal Socket.IO server (`backend/src/sockets/io.js`, wired in `server.js`) emits `visitorCheckedIn` / `visitorCheckedOut` / `visitorFaceRegistered` / `visitorRecognitionFailed`; Dashboard, Visitor Entries, and Currently Inside subscribe (`frontend/src/services/socket.js`) and auto-refresh. Payloads carry id/name/status only — never photos or embeddings.
+
+**Verified end-to-end** against all three live services: register → profile+entry created + photo on disk + `face_registered` audit + no embedding in any response; recognize-while-inside → `already_checked_in` (no dup); mobile checkout still works; recognize-after-checkout → matched (conf 1.000) → confirm → `face_recognition` entry; a different unregistered face → `low_confidence`; quality gates reject no-face / multiple-faces / blurry images; admin photo endpoint 401s without a token. Frontend build + lint clean.
+
+**Explicitly out of scope (deferred, documented):** full RBAC — the app still has no roles system; the only access tier needed here (staff-only Manual Search) is gated by the existing admin login, and building real roles remains a separate future ticket. Full liveness/anti-spoofing (blink/head-movement) — only basic quality checks (single face, min size, blur) are enforced; a client could still POST a base64 of a static image, a known soft limitation consistent with "liveness future-ready". Automatic camera-loop checkout — only the `face_auto` enum + one admin-protected `POST /api/admin/visitor-profiles/:id/face-checkout` endpoint exist as readiness; no unattended camera loop is built. FAISS vector indexing — O(n) embedding comparison is fine at current scale.

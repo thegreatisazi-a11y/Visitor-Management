@@ -23,10 +23,20 @@ const visitorEntrySchema = new mongoose.Schema(
     },
     checkoutMethod: {
       type: String,
-      enum: ['mobile_self_out', 'auto_midnight', 'admin_close', null],
+      // face_auto is reserved for future AI camera-based auto-checkout; today it is
+      // only ever set via the admin-protected face-checkout endpoint.
+      enum: ['mobile_self_out', 'auto_midnight', 'admin_close', 'face_auto', null],
       default: null,
     },
     visitDurationMinutes: { type: Number, default: null },
+
+    visitorProfileId: { type: mongoose.Schema.Types.ObjectId, ref: 'VisitorProfile', default: null },
+    entryMethod: {
+      type: String,
+      enum: ['manual', 'first_registration', 'face_recognition'],
+      default: 'manual',
+    },
+    confidenceScore: { type: Number, default: null },
 
     qrCodeId: { type: mongoose.Schema.Types.ObjectId, ref: 'VisitorQrCode', default: null },
     entrySessionId: { type: mongoose.Schema.Types.ObjectId, ref: 'VisitorEntrySession', default: null },
@@ -54,5 +64,7 @@ visitorEntrySchema.index({ status: 1 });
 visitorEntrySchema.index({ checkoutMethod: 1 });
 visitorEntrySchema.index({ createdAt: 1 });
 visitorEntrySchema.index({ mobileNo: 1, status: 1 });
+visitorEntrySchema.index({ visitorProfileId: 1 });
+visitorEntrySchema.index({ entryMethod: 1 });
 
 module.exports = mongoose.model('VisitorEntry', visitorEntrySchema);

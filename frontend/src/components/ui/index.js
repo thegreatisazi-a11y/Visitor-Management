@@ -14,3 +14,4 @@ export { default as StatCard } from './StatCard';
 export { default as FilterBar } from './FilterBar';
 export { default as ColumnFilterMenu } from './ColumnFilterMenu';
 export { default as ColumnRangeFilter } from './ColumnRangeFilter';
+export { default as CameraCapture } from './CameraCapture';

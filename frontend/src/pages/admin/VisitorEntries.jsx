@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { FiEye, FiEdit2, FiXCircle, FiLogOut, FiPrinter, FiDownload, FiRotateCcw, FiChevronDown, FiChevronUp } from 'react-icons/fi';
-import { Card, Table, Pagination, FilterBar, Modal, ConfirmDialog, Button, Input, TextArea, StatusBadge } from '../../components/ui';
-import { QUICK_FILTERS, CHECKOUT_METHOD_LABELS, STATUS_LABELS, EXPORT_FORMATS } from '../../constants';
+import { FiEye, FiEdit2, FiXCircle, FiLogOut, FiPrinter, FiDownload, FiRotateCcw, FiChevronDown, FiChevronUp, FiImage } from 'react-icons/fi';
+import { Card, Table, Pagination, FilterBar, Modal, ConfirmDialog, Button, Input, TextArea, StatusBadge, Spinner } from '../../components/ui';
+import { QUICK_FILTERS, CHECKOUT_METHOD_LABELS, STATUS_LABELS, ENTRY_METHOD_LABELS, EXPORT_FORMATS } from '../../constants';
 import { formatDate, formatTime, formatDuration, formatDateTime } from '../../utils/formatters';
 import { listEntries, updateEntry, cancelEntry, adminCloseEntry, logPrint, getDistinctValues } from '../../services/visitorService';
+import { getProfilePhoto } from '../../services/visitorProfileService';
 import { exportReport, listExportHistory } from '../../services/reportService';
 import { extractErrorMessage } from '../../services/apiClient';
+import { subscribe } from '../../services/socket';
 
 const LIMIT = 10;
 const HISTORY_LIMIT = 5;
@@ -24,9 +26,14 @@ const BLANK_COLUMN_FILTERS = {
   purposeOfVisit: [],
   status: [],
   checkoutMethod: [],
+  entryMethod: [],
 };
 
-const LABEL_MAPS = { status: STATUS_LABELS, checkoutMethod: CHECKOUT_METHOD_LABELS };
+const LABEL_MAPS = {
+  status: STATUS_LABELS,
+  checkoutMethod: CHECKOUT_METHOD_LABELS,
+  entryMethod: ENTRY_METHOD_LABELS,
+};
 
 // Date/time/duration columns get an operator+range filter instead of a values
 // checklist - nearly every row has its own unique timestamp/duration, so "select
@@ -37,8 +44,15 @@ const BLANK_RANGE_FILTERS = {
   inTime: BLANK_RANGE,
   outTime: BLANK_RANGE,
   visitDurationMinutes: BLANK_RANGE,
+  confidenceScore: BLANK_RANGE,
 };
-const RANGE_FIELD_TYPES = { visitDate: 'date', inTime: 'datetime', outTime: 'datetime', visitDurationMinutes: 'number' };
+const RANGE_FIELD_TYPES = {
+  visitDate: 'date',
+  inTime: 'datetime',
+  outTime: 'datetime',
+  visitDurationMinutes: 'number',
+  confidenceScore: 'number',
+};
 
 function DetailRow({ label, value }) {
   return (
@@ -83,8 +97,58 @@ function ViewModal({ entry, onClose, onPrint }) {
         <DetailRow label="Duration" value={formatDuration(entry.visitDurationMinutes)} />
         <DetailRow label="Status" value={<StatusBadge status={entry.status} />} />
         <DetailRow label="Checkout Method" value={CHECKOUT_METHOD_LABELS[entry.checkoutMethod] || '-'} />
+        <DetailRow label="Entry Method" value={ENTRY_METHOD_LABELS[entry.entryMethod] || '-'} />
+        <DetailRow
+          label="Match Confidence"
+          value={entry.confidenceScore != null ? `${Math.round(entry.confidenceScore * 100)}%` : '-'}
+        />
         <DetailRow label="Remarks" value={entry.remarks} />
         {entry.status === 'cancelled' && <DetailRow label="Cancellation Reason" value={entry.cancellationReason} />}
+      </div>
+    </Modal>
+  );
+}
+
+// Photo lives on the linked VisitorProfile (populated onto the entry). Fetched
+// through the authed client as a blob, shown in a modal.
+function PhotoModal({ entry, onClose }) {
+  const [url, setUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const profileId = entry?.visitorProfileId?._id;
+
+  useEffect(() => {
+    if (!entry) return undefined;
+    if (!profileId) {
+      setLoading(false);
+      return undefined;
+    }
+    let objectUrl;
+    setLoading(true);
+    getProfilePhoto(profileId)
+      .then((res) => {
+        objectUrl = URL.createObjectURL(res.data);
+        setUrl(objectUrl);
+      })
+      .catch(() => setUrl(null))
+      .finally(() => setLoading(false));
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [entry, profileId]);
+
+  if (!entry) return null;
+
+  return (
+    <Modal open={!!entry} onClose={onClose} title={`Photo - ${entry.visitorName}`}>
+      <div className="flex min-h-[240px] items-center justify-center">
+        {loading ? (
+          <Spinner size={32} />
+        ) : url ? (
+          <img src={url} alt={entry.visitorName} className="max-h-80 rounded-lg" />
+        ) : (
+          <p className="text-sm text-slate-500">No photo on file for this visitor.</p>
+        )}
       </div>
     </Modal>
   );
@@ -210,6 +274,7 @@ export default function VisitorEntries() {
   const [editEntry, setEditEntry] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [closeTarget, setCloseTarget] = useState(null);
+  const [photoEntry, setPhotoEntry] = useState(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -270,6 +335,9 @@ export default function VisitorEntries() {
   useEffect(() => {
     fetchList();
   }, [fetchList]);
+
+  // Live-refresh the grid when a visitor checks in/out anywhere (mobile, face, admin).
+  useEffect(() => subscribe(['visitorCheckedIn', 'visitorCheckedOut'], () => fetchList()), [fetchList]);
 
   const handleQuickFilterChange = (val) => {
     setQuickFilter(val);
@@ -424,6 +492,30 @@ export default function VisitorEntries() {
       filter: distinctFilter('checkoutMethod'),
     },
     {
+      key: 'entryMethod',
+      label: 'Entry Method',
+      render: (r) => ENTRY_METHOD_LABELS[r.entryMethod] || '-',
+      filter: distinctFilter('entryMethod'),
+    },
+    {
+      key: 'confidenceScore',
+      label: 'Confidence',
+      render: (r) => (r.confidenceScore != null ? `${Math.round(r.confidenceScore * 100)}%` : '-'),
+      filter: rangeFilter('confidenceScore'),
+    },
+    {
+      key: 'photo',
+      label: 'Photo',
+      render: (r) =>
+        r.visitorProfileId ? (
+          <button title="View Photo" onClick={() => setPhotoEntry(r)} className="text-slate-500 hover:text-brand-600">
+            <FiImage size={16} />
+          </button>
+        ) : (
+          <span className="text-slate-300">-</span>
+        ),
+    },
+    {
       key: 'actions',
       label: 'Actions',
       render: (r) => (
@@ -529,6 +621,7 @@ export default function VisitorEntries() {
       <ExportHistoryPanel open={showHistory} />
 
       <ViewModal entry={viewEntry} onClose={() => setViewEntry(null)} onPrint={handlePrintEntry} />
+      <PhotoModal entry={photoEntry} onClose={() => setPhotoEntry(null)} />
       <EditModal
         entry={editEntry}
         onClose={() => setEditEntry(null)}

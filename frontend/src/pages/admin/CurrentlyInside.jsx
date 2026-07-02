@@ -5,6 +5,7 @@ import { Card, Table, Pagination, FilterBar, Modal, ConfirmDialog, Button, Statu
 import { formatDate, formatTime, liveDuration } from '../../utils/formatters';
 import { listCurrentlyInside, cancelEntry, adminCloseEntry } from '../../services/visitorService';
 import { extractErrorMessage } from '../../services/apiClient';
+import { subscribe } from '../../services/socket';
 
 const LIMIT = 10;
 
@@ -81,6 +82,8 @@ export default function CurrentlyInside() {
   useEffect(() => {
     fetchList();
   }, [fetchList]);
+
+  useEffect(() => subscribe(['visitorCheckedIn', 'visitorCheckedOut'], () => fetchList()), [fetchList]);
 
   const handleApplyFilters = (rows) => {
     setFilters(rows);

@@ -6,11 +6,18 @@ const { startOfDay, diffInMinutes } = require('../utils/dateHelpers');
 const { getPagination, buildMeta } = require('../utils/pagination');
 const { buildFilterQuery, buildGlobalSearchQuery, buildQuickFilterQuery, parseFilters } = require('../utils/queryBuilder');
 const { writeAuditLog } = require('./auditService');
+const { emitEvent } = require('../sockets/io');
 
 const ACTIVE_ENTRY_QUERY = { status: 'inside_premises', outTime: null };
 
 async function findActiveEntryByMobile(mobileNo) {
   return VisitorEntry.findOne({ mobileNo, ...ACTIVE_ENTRY_QUERY }).sort({ inTime: -1 });
+}
+
+// Face-recognition dedupe key: a profile may have a blank mobile, so active-visit
+// checks for face-based entries must key off the profile link, not the mobile.
+async function findActiveEntryByProfileId(visitorProfileId) {
+  return VisitorEntry.findOne({ visitorProfileId, ...ACTIVE_ENTRY_QUERY }).sort({ inTime: -1 });
 }
 
 async function checkMobile(mobileNo) {
@@ -72,6 +79,13 @@ async function createCheckin(payload, meta = {}) {
     deviceInfo: meta.deviceInfo,
   });
 
+  emitEvent('visitorCheckedIn', {
+    visitorId: entry.visitorId,
+    visitorName: entry.visitorName,
+    entryMethod: 'manual',
+    status: entry.status,
+  });
+
   return entry;
 }
 
@@ -112,6 +126,8 @@ async function completeCheckout({ mobileNo, visitorEntryId }, meta = {}) {
     deviceInfo: meta.deviceInfo,
   });
 
+  emitEvent('visitorCheckedOut', { visitorId: entry.visitorId, visitorName: entry.visitorName, status: entry.status });
+
   return { found: true, entry };
 }
 
@@ -145,6 +161,7 @@ const DISTINCT_ALLOWED_FIELDS = [
   'purposeOfVisit',
   'status',
   'checkoutMethod',
+  'entryMethod',
 ];
 
 async function getDistinctValues(field, reqQuery) {
@@ -170,8 +187,14 @@ async function listEntries(reqQuery) {
   const sortField = reqQuery.sortBy || 'inTime';
   const sortDir = reqQuery.sortDir === 'asc' ? 1 : -1;
 
+  // Populating only photoUrl/faceRegistered is safe: faceEmbedding is select:false
+  // at the schema level, so it can never ride along into the grid response.
   const [data, total] = await Promise.all([
-    VisitorEntry.find(query).sort({ [sortField]: sortDir }).skip(skip).limit(limit),
+    VisitorEntry.find(query)
+      .sort({ [sortField]: sortDir })
+      .skip(skip)
+      .limit(limit)
+      .populate('visitorProfileId', 'photoUrl faceRegistered'),
     VisitorEntry.countDocuments(query),
   ]);
 
@@ -183,7 +206,11 @@ async function listCurrentlyInside(reqQuery) {
   const query = { ...buildListQuery(reqQuery), status: 'inside_premises', outTime: null };
 
   const [data, total] = await Promise.all([
-    VisitorEntry.find(query).sort({ inTime: -1 }).skip(skip).limit(limit),
+    VisitorEntry.find(query)
+      .sort({ inTime: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate('visitorProfileId', 'photoUrl faceRegistered'),
     VisitorEntry.countDocuments(query),
   ]);
 
@@ -272,6 +299,8 @@ async function adminCloseEntry(id, adminUserId, meta = {}) {
     deviceInfo: meta.deviceInfo,
   });
 
+  emitEvent('visitorCheckedOut', { visitorId: entry.visitorId, visitorName: entry.visitorName, status: entry.status });
+
   return entry;
 }
 
@@ -308,6 +337,7 @@ async function listOutSessions(reqQuery) {
 module.exports = {
   ACTIVE_ENTRY_QUERY,
   findActiveEntryByMobile,
+  findActiveEntryByProfileId,
   findLatestByMobile,
   checkMobile,
   createCheckin,

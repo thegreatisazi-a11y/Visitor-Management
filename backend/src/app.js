@@ -27,7 +27,8 @@ app.use(
   })
 );
 app.use(compression());
-app.use(express.json({ limit: '2mb' }));
+// 5mb accommodates base64-encoded selfie payloads for face registration/recognition.
+app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(mongoSanitize());

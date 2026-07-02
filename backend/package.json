@@ -11,6 +11,7 @@
     "seed:admin": "node src/utils/seedAdmin.js"
   },
   "dependencies": {
+    "axios": "^1.18.1",
     "bcrypt": "^5.1.1",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",
@@ -28,6 +29,7 @@
     "node-cron": "^3.0.3",
     "pdfkit": "^0.15.0",
     "qrcode": "^1.5.3",
+    "socket.io": "^4.8.3",
     "ua-parser-js": "^1.0.38",
     "uuid": "^9.0.1",
     "winston": "^3.13.0",

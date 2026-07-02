@@ -40,6 +40,11 @@ const env = {
 
   AUTO_CLOSE_CRON_EXPRESSION: process.env.AUTO_CLOSE_CRON_EXPRESSION || '0 0 * * *',
 
+  AI_SERVICE_BASE_URL: process.env.AI_SERVICE_BASE_URL || 'http://localhost:8001',
+  AI_SERVICE_TIMEOUT_MS: parseInt(process.env.AI_SERVICE_TIMEOUT_MS, 10) || 8000,
+  FACE_RECOGNITION_THRESHOLD: parseFloat(process.env.FACE_RECOGNITION_THRESHOLD) || 0.85,
+  FACE_PHOTO_MAX_SIZE_MB: parseInt(process.env.FACE_PHOTO_MAX_SIZE_MB, 10) || 4,
+
   UPLOAD_DIR: process.env.UPLOAD_DIR || 'src/uploads',
   MAX_UPLOAD_SIZE_MB: parseInt(process.env.MAX_UPLOAD_SIZE_MB, 10) || 5,
 

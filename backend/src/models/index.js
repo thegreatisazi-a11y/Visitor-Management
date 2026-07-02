@@ -3,6 +3,7 @@ module.exports = {
   VisitorQrCode: require('./VisitorQrCode'),
   VisitorEntrySession: require('./VisitorEntrySession'),
   VisitorEntry: require('./VisitorEntry'),
+  VisitorProfile: require('./VisitorProfile'),
   VisitorOutSession: require('./VisitorOutSession'),
   AutoCloseRun: require('./AutoCloseRun'),
   SavedFilter: require('./SavedFilter'),

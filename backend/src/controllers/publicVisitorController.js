@@ -2,6 +2,7 @@ const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
 const visitorService = require('../services/visitorService');
+const visitorProfileService = require('../services/visitorProfileService');
 const qrService = require('../services/qrService');
 const { writeAuditLog } = require('../services/auditService');
 const { mobileSchema } = require('../validators/publicVisitorValidators');
@@ -119,4 +120,104 @@ const getPreviousByMobile = catchAsync(async (req, res, next) => {
   });
 });
 
-module.exports = { checkMobile, checkin, getCheckoutDetails, checkout, getPreviousByMobile };
+// Whitelist serializer for a profile shown to a visitor during their own flow.
+// NEVER includes faceEmbedding; photo is an inline base64 thumbnail (same trust
+// tier as the mobile autofill lookup - a visitor sees only their own data).
+function serializeProfile(profile, { includePhoto = false, lastVisitAt = null } = {}) {
+  const out = {
+    id: profile._id,
+    visitorId: profile.visitorId,
+    visitorName: profile.visitorName,
+    companyName: profile.companyName,
+    mobileNo: profile.mobileNo,
+    emailId: profile.emailId,
+    address: profile.address,
+    faceRegistered: profile.faceRegistered,
+    lastVisitAt: lastVisitAt ? formatDateDDMMYYYY(lastVisitAt) : null,
+  };
+  if (includePhoto) {
+    out.photoThumbnail = visitorProfileService.readPhotoAsThumbnail(profile.photoUrl);
+  }
+  return out;
+}
+
+const registerWithFace = catchAsync(async (req, res) => {
+  const meta = { ipAddress: req.clientIp, deviceInfo: req.deviceInfo };
+  const profile = await visitorProfileService.createProfileWithFace(req.body, meta);
+  const entry = await visitorProfileService.createEntryForProfile(
+    profile,
+    { purposeOfVisit: req.body.purposeOfVisit, personToMeet: req.body.personToMeet, remarks: req.body.remarks },
+    { entryMethod: 'first_registration' },
+    meta
+  );
+  sendSuccess(res, { statusCode: 201, message: 'Registration & Check-In Successful', data: serializeEntry(entry) });
+});
+
+const recognizeFace = catchAsync(async (req, res) => {
+  const result = await visitorProfileService.recognizeVisitor(req.body.imageBase64, {
+    ipAddress: req.clientIp,
+    deviceInfo: req.deviceInfo,
+  });
+
+  const FAIL_MESSAGES = {
+    no_face: 'Face not detected. Please try again.',
+    multiple_faces: 'Multiple faces detected. Please ensure only one visitor is in camera.',
+    low_quality: 'Image quality too low. Move closer, hold steady, and improve lighting.',
+    invalid_image: 'The captured image could not be processed. Please try again.',
+    low_confidence: 'Visitor not recognized confidently.',
+  };
+
+  if (result.outcome === 'matched') {
+    return sendSuccess(res, {
+      message: 'Visitor recognized',
+      data: {
+        outcome: 'matched',
+        confidence: result.confidence,
+        profile: serializeProfile(result.profile, {
+          includePhoto: true,
+          lastVisitAt: result.lastEntry ? result.lastEntry.inTime : null,
+        }),
+      },
+    });
+  }
+
+  if (result.outcome === 'already_checked_in') {
+    return sendSuccess(res, {
+      message: 'This visitor is already checked in.',
+      data: { outcome: 'already_checked_in', profile: serializeProfile(result.profile, { includePhoto: true }) },
+    });
+  }
+
+  sendSuccess(res, {
+    message: FAIL_MESSAGES[result.outcome] || 'Visitor not recognized.',
+    data: { outcome: result.outcome },
+  });
+});
+
+const confirmFaceCheckin = catchAsync(async (req, res) => {
+  const { visitorProfileId, purposeOfVisit, personToMeet, remarks, confidenceScore } = req.body;
+  const entry = await visitorProfileService.confirmFaceCheckin(
+    visitorProfileId,
+    { purposeOfVisit, personToMeet, remarks },
+    confidenceScore,
+    { ipAddress: req.clientIp, deviceInfo: req.deviceInfo }
+  );
+  sendSuccess(res, { statusCode: 201, message: 'Check-In Successful', data: serializeEntry(entry) });
+});
+
+const getProfileByVisitorId = catchAsync(async (req, res) => {
+  const profile = await visitorProfileService.getProfileByVisitorId(req.params.visitorId);
+  sendSuccess(res, { data: serializeProfile(profile, { includePhoto: true }) });
+});
+
+module.exports = {
+  checkMobile,
+  checkin,
+  getCheckoutDetails,
+  checkout,
+  getPreviousByMobile,
+  registerWithFace,
+  recognizeFace,
+  confirmFaceCheckin,
+  getProfileByVisitorId,
+};

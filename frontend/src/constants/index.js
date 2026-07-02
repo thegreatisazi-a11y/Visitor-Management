@@ -16,6 +16,13 @@ export const CHECKOUT_METHOD_LABELS = {
   mobile_self_out: 'Self Checkout',
   auto_midnight: 'Auto (Midnight)',
   admin_close: 'Admin Closed',
+  face_auto: 'Face Auto',
+};
+
+export const ENTRY_METHOD_LABELS = {
+  manual: 'Manual / Mobile',
+  first_registration: 'First Registration',
+  face_recognition: 'Face Recognition',
 };
 
 export const QUICK_FILTERS = [
@@ -55,6 +62,13 @@ export const FILTERABLE_FIELDS = [
     type: 'dropdown',
     options: Object.entries(CHECKOUT_METHOD_LABELS).map(([value, label]) => ({ value, label })),
   },
+  {
+    field: 'entryMethod',
+    label: 'Entry Method',
+    type: 'dropdown',
+    options: Object.entries(ENTRY_METHOD_LABELS).map(([value, label]) => ({ value, label })),
+  },
+  { field: 'confidenceScore', label: 'Confidence Score', type: 'number' },
   { field: 'createdAt', label: 'Created At', type: 'datetime' },
   { field: 'updatedAt', label: 'Updated At', type: 'datetime' },
 ];

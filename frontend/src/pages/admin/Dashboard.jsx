@@ -34,6 +34,7 @@ import { STATUS_LABELS } from '../../constants';
 import { formatDuration } from '../../utils/formatters';
 import { getSummary, getAnalytics, getCharts } from '../../services/dashboardService';
 import { extractErrorMessage } from '../../services/apiClient';
+import { subscribe } from '../../services/socket';
 
 const PIE_COLORS = ['#059669', '#2563eb', '#d97706', '#e11d48'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -57,6 +58,7 @@ export default function Dashboard() {
   const [charts, setCharts] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -78,7 +80,13 @@ export default function Dashboard() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [refreshKey]);
+
+  // Refresh KPIs/charts live on any visitor status change.
+  useEffect(
+    () => subscribe(['visitorCheckedIn', 'visitorCheckedOut'], () => setRefreshKey((k) => k + 1)),
+    []
+  );
 
   const statCards = [
     { label: "Today's Total IN Entries", value: summary?.todayTotalInEntries, icon: <FiLogIn size={20} />, accent: 'brand' },

@@ -9,6 +9,7 @@ import {
   FiShield,
   FiUserPlus,
   FiSettings,
+  FiSmile,
   FiX,
 } from 'react-icons/fi';
 
@@ -17,6 +18,7 @@ import {
 const NAV_ITEMS = [
   { to: '/admin/dashboard', label: 'Admin Dashboard', icon: FiGrid },
   { to: '/admin/visitor-entries', label: 'Visitor Entries', icon: FiUsers },
+  { to: '/admin/visitor-profiles', label: 'Visitor Profiles', icon: FiSmile },
   { to: '/admin/currently-inside', label: 'Currently Inside', icon: FiUserCheck },
   { to: '/admin/out-sessions', label: 'OUT Sessions', icon: FiLogOut },
   { to: '/admin/qr-management', label: 'QR Management', icon: FiCode },

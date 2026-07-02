@@ -1,3 +1,4 @@
+const http = require('http');
 const app = require('./app');
 const env = require('./config/env');
 const connectDB = require('./config/db');
@@ -5,6 +6,7 @@ const logger = require('./utils/logger');
 const { initScheduler } = require('./jobs/scheduler');
 const { ensureDefaultSettings } = require('./services/settingsService');
 const qrService = require('./services/qrService');
+const { initSocket } = require('./sockets/io');
 
 async function start() {
   await connectDB();
@@ -13,7 +15,10 @@ async function start() {
 
   initScheduler();
 
-  const server = app.listen(env.PORT, () => {
+  const server = http.createServer(app);
+  initSocket(server);
+
+  server.listen(env.PORT, () => {
     logger.info(`ISAZI Visitor Portal API listening on port ${env.PORT} [${env.NODE_ENV}]`);
   });
 

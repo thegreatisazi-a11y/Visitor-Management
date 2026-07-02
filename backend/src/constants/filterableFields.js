@@ -13,6 +13,8 @@ const VISITOR_ENTRY_FIELD_TYPES = {
   visitDurationMinutes: 'number',
   status: 'dropdown',
   checkoutMethod: 'dropdown',
+  entryMethod: 'dropdown',
+  confidenceScore: 'number',
   createdAt: 'datetime',
   updatedAt: 'datetime',
 };

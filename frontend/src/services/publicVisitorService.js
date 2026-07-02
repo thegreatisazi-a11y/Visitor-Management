@@ -11,3 +11,11 @@ export const getCheckoutDetails = (visitorEntryId) => apiClient.get(`/public/vis
 export const checkout = (payload) => apiClient.post('/public/visitor/checkout', payload);
 
 export const getPublicSettings = () => apiClient.get('/public/settings');
+
+export const registerWithFace = (payload) => apiClient.post('/public/visitor/register-with-face', payload);
+
+export const recognizeFace = (imageBase64) => apiClient.post('/public/visitor/recognize-face', { imageBase64 });
+
+export const confirmFaceCheckin = (payload) => apiClient.post('/public/visitor/confirm-face-checkin', payload);
+
+export const getProfileByVisitorId = (visitorId) => apiClient.get(`/public/visitor/profile/${visitorId}`);
